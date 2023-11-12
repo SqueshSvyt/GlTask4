@@ -1,0 +1,4 @@
+/home/svyat/Desktop/GLTask5/build/CMakeFiles/sniffer_library.dir
+/home/svyat/Desktop/GLTask5/build/CMakeFiles/SniferApp.dir
+/home/svyat/Desktop/GLTask5/build/CMakeFiles/edit_cache.dir
+/home/svyat/Desktop/GLTask5/build/CMakeFiles/rebuild_cache.dir
