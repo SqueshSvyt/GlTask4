@@ -1,1 +1,0 @@
-/usr/bin/c++ -rdynamic CMakeFiles/SniferApp.dir/main.cpp.o -o SniferApp  libsniffer_library.a 
