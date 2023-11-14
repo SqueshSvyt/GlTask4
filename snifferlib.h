@@ -22,6 +22,8 @@
 #include <arpa/inet.h>
 #include <ifaddrs.h>
 
+#include "filepacketlogger.h"
+
 const int buffer_size = 65536;
 
 struct PacketStatisticInfo{
@@ -66,6 +68,8 @@ private:
     std::thread ui_thread;
     std::future<void> speed_reset_async;
     std::chrono::high_resolution_clock::time_point start_time;
+
+    PacketLogger packetLogger;
 };
 
 #endif //SNIFFER_LIB

@@ -1,6 +1,6 @@
 #include "snifferlib.h"
 
-PacketSniffer::PacketSniffer() : raw_socket(-1), buffer(buffer_size), pack_stat() {
+PacketSniffer::PacketSniffer() : raw_socket(-1), buffer(buffer_size), pack_stat(), packetLogger() {
     //start_time = std::chrono::high_resolution_clock::now();
     current_ip = getCurrentIP();
 }
@@ -46,20 +46,16 @@ bool PacketSniffer::createSocket(){
 
 void PacketSniffer::processPacket(ssize_t size){
     auto* ip_header = reinterpret_cast<struct iphdr*>(const_cast<unsigned char*>(buffer.data()) + sizeof(struct ethhdr));
-    //struct ethhdr* eth = reinterpret_cast<struct ethhdr*>(const_cast<unsigned char*>(buffer.data()));
 
     // Increment packet count and update total size
-
-
-
-
     if (ip_header->saddr == inet_addr(current_ip.c_str())) {
         pack_stat.packet_count++;
         pack_stat.total_size += size;
         pack_stat.total_sen_data += size;
         pack_stat.sen_per_second += size;
         pack_stat.total_sen_packet++;
-    } else if(ip_header->daddr == inet_addr(current_ip.c_str())){
+    }
+    else if(ip_header->daddr == inet_addr(current_ip.c_str())){
         pack_stat.packet_count++;
         pack_stat.total_size += size;
         pack_stat.total_rec_data += size;
@@ -67,24 +63,7 @@ void PacketSniffer::processPacket(ssize_t size){
         pack_stat.total_rec_packet++;
     }
 
-    /*switch (ip_header->protocol)
-    {
-        case IPPROTO_TCP: {
-            //auto* tcp_header = reinterpret_cast<struct tcphdr*>(const_cast<unsigned char*>(buffer.data()) + sizeof(struct ethhdr) + sizeof(struct iphdr));
-            break;
-        }
-        case IPPROTO_UDP: {
-            //auto* udp_header = reinterpret_cast<struct udphdr*>(const_cast<unsigned char*>(buffer.data()) + sizeof(struct ethhdr) + sizeof(struct iphdr));
-            break;
-        }
-        case IPPROTO_ICMP:
-            break;
-        case IPPROTO_IGMP:
-            break;
-        default:
-            std::cout << "Unknown packet!" << std::endl;
-            break;
-    }*/
+    packetLogger.LogPacketToFile(buffer);
 }
 
 void PacketSniffer::outputOverallStatistics() const{
@@ -151,12 +130,11 @@ void PacketSniffer::start() {
 
 std::string PacketSniffer::formatBytes(unsigned long long bytes) {
     const int unit = 1024;
-    if (bytes < unit) {
+    if (bytes < unit)
         return std::to_string(bytes) + " B";
-    }
 
     int exp = static_cast<int>(std::log(bytes) / std::log(unit));
-    char prefix = "KMGTPE"[exp - 1];// 'K' for kilobytes, 'M' for megabytes, etc.
+    char prefix = "KMGTPE"[exp - 1];
 
     return std::to_string(bytes / std::pow(unit, exp)) + " " + prefix + "B";
 }

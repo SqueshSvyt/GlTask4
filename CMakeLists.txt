@@ -5,7 +5,7 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(SNIFFER_LIB_SOURCE sniffer.cpp)
 
-add_library(sniffer_library STATIC snifferlib.cpp)
+add_library(sniffer_library SHARED snifferlib.cpp filepacketlogger.cpp)
 
 set(SOURCE main.cpp)
 
