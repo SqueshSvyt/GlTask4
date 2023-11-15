@@ -6,6 +6,7 @@
 #include <fstream>
 #include <vector>
 
+#include <netdb.h>
 #include <netinet/if_ether.h>
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
@@ -19,17 +20,17 @@ const std::string default_filename = "packet_log_file.txt";
 class PacketLogger {
 public:
     PacketLogger();
+    PacketLogger(std::string file_name);
     ~PacketLogger();
 
     void LogPacketToFile(const std::vector<unsigned char>& buffer);
-
 private:
     void printEthernetHeader(const std::vector<unsigned char>& buffer);
     void printIpHeader(const std::vector<unsigned char>& buffer);
     void printTcpPacket(const std::vector<unsigned char>& buffer);
     void printUdpPacket(const std::vector<unsigned char>& buffer);
     void printIcmpPacket(const std::vector<unsigned char>& buffer);
-    void printData(const std::vector<unsigned char>& buffer, int size);
+    void printData(const unsigned char* data, int size);
 
     std::ofstream logfile;
 };
