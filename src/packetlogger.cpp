@@ -1,4 +1,4 @@
-#include "filepacketlogger.h"
+#include "../include/packetlogger.h"
 
 PacketLogger::PacketLogger() : logfile(default_filename) {}
 
@@ -6,32 +6,50 @@ PacketLogger::PacketLogger(std::string file_name) : logfile(file_name) {}
 
 PacketLogger::~PacketLogger() = default;
 
-void PacketLogger::LogPacketToFile(const std::vector<unsigned char>& buffer) {
+void PacketLogger::LogPacketAsync(std::vector<unsigned char> buffer, long size) {
+    std::future<void> file_print = std::async(&PacketLogger::LogPacketToFile, this, std::ref(buffer), size);
+
+    if(file_print.valid())
+        file_print.wait();
+}
+
+void PacketLogger::LogPacketToFile(std::vector<unsigned char>& buffer, long size) {
+    std::lock_guard<std::mutex> lock(mtx_file_print);
+    const auto* ethHeader = reinterpret_cast<const struct ethhdr*>(buffer.data());
+    if(ethHeader->h_proto == ETH_P_ARP){
+        printArpPacket(buffer, size);
+        packet_counter.ARP++;
+        return;
+    }
     auto* ip_header = reinterpret_cast<struct iphdr*>(const_cast<unsigned char*>(buffer.data()) + sizeof(struct ethhdr));
     switch (ip_header->protocol) //Check the Protocol and do accordingly...
     {
-        case 1:  //ICMP Protocol
-            printIcmpPacket(buffer);
+        case IPPROTO_ICMP:  //ICMP Protocol
+            printIcmpPacket(buffer, size);
+            packet_counter.ICMP++;
             break;
 
-        case 2:  //IGMP Protocol
-
+        case IPPROTO_IGMP:  //IGMP Protocol
+            printIgmpPacket(buffer, size);
+            packet_counter.IGMP++;
             break;
 
-        case 6:  //TCP Protocol
-            printTcpPacket(buffer);
+        case IPPROTO_TCP:  //TCP Protocol
+            printTcpPacket(buffer, size);
+            packet_counter.TCP++;
             break;
 
-        case 17: //UDP Protocol
-            printUdpPacket(buffer);
+        case IPPROTO_UDP: //UDP Protocol
+            printUdpPacket(buffer, size);
+            packet_counter.UDP++;
             break;
 
-        default: //Some Other Protocol like ARP etc.
+        default:
             break;
     }
 }
 
-void PacketLogger::printEthernetHeader(const std::vector<unsigned char>& buffer)
+void PacketLogger::printEthernetHeader(const std::vector<unsigned char>& buffer, long size)
 {
     if (buffer.size() < sizeof(struct ether_header)) {
         // Handle the case where the buffer size is smaller than the Ethernet header size
@@ -39,7 +57,7 @@ void PacketLogger::printEthernetHeader(const std::vector<unsigned char>& buffer)
         return;
     }
 
-    const struct ether_header* eth = reinterpret_cast<const struct ether_header*>(buffer.data());
+    const auto* eth = reinterpret_cast<const struct ether_header*>(buffer.data());
 
     logfile << std::endl;
     logfile << "Ethernet Header\n";
@@ -60,13 +78,13 @@ void PacketLogger::printEthernetHeader(const std::vector<unsigned char>& buffer)
     logfile << "   |-Protocol            : " << ntohs(eth->ether_type) << std::endl;
 }
 
-void PacketLogger::printIpHeader(const std::vector<unsigned char>& Buffer)
+void PacketLogger::printIpHeader(const std::vector<unsigned char>& Buffer, long size)
 {
-    printEthernetHeader(Buffer);
+    printEthernetHeader(Buffer, size);
 
     unsigned short iphdrlen;
 
-    const struct iphdr* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ether_header));
+    const auto* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ether_header));
     iphdrlen = iph->ihl * 4;
 
     struct sockaddr_in source{}, dest{}; // Value initialization to zero
@@ -89,18 +107,18 @@ void PacketLogger::printIpHeader(const std::vector<unsigned char>& Buffer)
     logfile << "   |-Destination IP   : " << inet_ntoa(dest.sin_addr) << std::endl;
 }
 
-void PacketLogger::printTcpPacket(const std::vector<unsigned char>& Buffer)
+void PacketLogger::printTcpPacket(const std::vector<unsigned char>& Buffer, long size)
 {
-    const struct iphdr* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
+    const auto* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
     unsigned short iphdrlen = iph->ihl * 4;
 
-    const struct tcphdr* tcph = reinterpret_cast<const struct tcphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
+    const auto* tcph = reinterpret_cast<const struct tcphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
 
     int header_size = sizeof(struct ethhdr) + iphdrlen + tcph->doff * 4;
 
     logfile << "\n\n***********************TCP Packet*************************\n";
 
-    printIpHeader(Buffer);
+    printIpHeader(Buffer, size);
 
     logfile << std::endl;
     logfile << "TCP Header\n" << std::dec;
@@ -129,24 +147,23 @@ void PacketLogger::printTcpPacket(const std::vector<unsigned char>& Buffer)
     logfile << "TCP Header\n";
     printData(Buffer.data() + iphdrlen, sizeof(struct udphdr));
 
-    //logfile << "Data Payload\n";
-    //printData(Buffer.data() + header_size , Buffer.size()  - header_size);
+    logfile << "Data Payload\n";
+    printData(Buffer.data() + header_size , size  - header_size);
 
     logfile << "\n###########################################################";
 }
 
-void PacketLogger::printUdpPacket(const std::vector<unsigned char>& Buffer)
+void PacketLogger::printUdpPacket(const std::vector<unsigned char>& Buffer, long size)
 {
-    const struct iphdr* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
+    const auto* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
     unsigned short iphdrlen = iph->ihl * 4;
 
-    const struct udphdr* udph = reinterpret_cast<const struct udphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
+    const auto* udph = reinterpret_cast<const struct udphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
 
     int header_size = sizeof(struct ethhdr) + iphdrlen + sizeof(struct udphdr);
 
     logfile << "\n\n***********************UDP Packet*************************\n";
-
-    printIpHeader(Buffer);
+    printIpHeader(Buffer, size);
 
     logfile << "\nUDP Header\n" << std::dec;
     logfile << "   |-Source Port      : " << ntohs(udph->source) << "\n";
@@ -161,28 +178,28 @@ void PacketLogger::printUdpPacket(const std::vector<unsigned char>& Buffer)
     logfile << "UDP Header\n";
     printData(Buffer.data() + iphdrlen, sizeof(struct udphdr));
 
-    //logfile << "Data Payload\n";
+    logfile << "Data Payload\n";
     // Move the pointer ahead and reduce the size of the string
-    //printData(Buffer.data() + header_size , Buffer.size()  - header_size);
+    printData(Buffer.data() + header_size , size - header_size);
 
     logfile << "\n###########################################################";
 }
 
-void PacketLogger::printIcmpPacket(const std::vector<unsigned char>& Buffer)
+void PacketLogger::printIcmpPacket(const std::vector<unsigned char>& Buffer, long size)
 {
-    const struct iphdr* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
+    const auto* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
     unsigned short iphdrlen = iph->ihl * 4;
 
-    const struct icmphdr* icmph = reinterpret_cast<const struct icmphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
+    const auto* icmph = reinterpret_cast<const struct icmphdr*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
 
     int header_size = sizeof(struct ethhdr) + iphdrlen + sizeof(struct icmphdr);
 
     logfile << "\n\n***********************ICMP Packet*************************\n";
-    printIpHeader(Buffer);
+    printIpHeader(Buffer, size);
 
     logfile << "\n";
     logfile << "ICMP Header\n";
-    logfile << "   |-Type : " << static_cast<unsigned int>(icmph->type) << std::dec;;
+    logfile << "   |-Type : " << static_cast<unsigned int>(icmph->type) << std::dec;
 
     if (static_cast<unsigned int>(icmph->type) == 11)
     {
@@ -205,14 +222,98 @@ void PacketLogger::printIcmpPacket(const std::vector<unsigned char>& Buffer)
     logfile << "ICMP Header\n";
     printData(Buffer.data() + iphdrlen, sizeof(struct icmphdr));
 
-    //logfile << "Data Payload\n";
+    logfile << "Data Payload\n";
     // Move the pointer ahead and reduce the size of the string
-    //printData(Buffer.data() + header_size , Buffer.size()  - header_size);
+    printData(reinterpret_cast<const unsigned char *>(Buffer.data() + iphdrlen + sizeof(*icmph)), size - header_size);
 
     logfile << "\n###########################################################";
 }
 
-void PacketLogger::printData(const unsigned char* data, int Size)
+void PacketLogger::printIgmpPacket(const std::vector<unsigned char> &Buffer, long size) {
+    const auto* iph = reinterpret_cast<const struct iphdr*>(Buffer.data() + sizeof(struct ethhdr));
+    unsigned short iphdrlen = iph->ihl * 4;
+
+    const auto* igmph = reinterpret_cast<const struct igmp*>(Buffer.data() + iphdrlen + sizeof(struct ethhdr));
+
+    int header_size = sizeof(struct ethhdr) + iphdrlen + sizeof(struct igmp);
+
+    logfile << "\n\n***********************IGMP Packet*************************\n";
+    printIpHeader(Buffer, size);
+
+    logfile << "\n";
+    logfile << "IGMP Header\n";
+    logfile << "   |-Type : " << static_cast<unsigned int>(igmph->igmp_type) << std::dec;
+
+    // Add more cases if needed for different IGMP types
+    if (static_cast<unsigned int>(igmph->igmp_type) == IGMP_MEMBERSHIP_QUERY)
+    {
+        logfile << "  (Membership Query)\n";
+    }
+    else if (static_cast<unsigned int>(igmph->igmp_type) == IGMP_V1_MEMBERSHIP_REPORT)
+    {
+        logfile << "  (Membership Report - Version 1)\n";
+    }
+
+    logfile << "   |-Checksum : " << ntohs(igmph->igmp_cksum) << "\n";
+    logfile << "   |-Group Address : " << inet_ntoa(igmph->igmp_group) << "\n";
+    logfile << "\n";
+
+    logfile << "IP Header\n";
+    printData(Buffer.data(), iphdrlen);
+
+    logfile << "IGMP Header\n";
+    printData(Buffer.data() + iphdrlen, sizeof(struct igmp));
+
+    logfile << "Data Payload\n";
+    // Move the pointer ahead and reduce the size of the string
+    printData(reinterpret_cast<const unsigned char*>(Buffer.data() + iphdrlen + sizeof(*igmph)), size - header_size);
+
+    logfile << "\n###########################################################";
+}
+
+void PacketLogger::printArpPacket(const std::vector<unsigned char> &Buffer, long size) {
+    const auto* arpPacket = reinterpret_cast<const struct ether_arp*>(Buffer.data());
+
+    logfile << "\n\n***********************ARP Packet*************************\n";
+    printEthernetHeader(Buffer, size);
+
+    logfile << "\n";
+    logfile << "ARP Header\n";
+    logfile << "   |-Hardware Type: " << ntohs(arpPacket->ea_hdr.ar_hrd) << "\n";
+    logfile << "   |-Protocol Type: " << ntohs(arpPacket->ea_hdr.ar_pro) << "\n";
+    logfile << "   |-Hardware Address Length: " << static_cast<unsigned int>(arpPacket->ea_hdr.ar_hln) << "\n";
+    logfile << "   |-Protocol Address Length: " << static_cast<unsigned int>(arpPacket->ea_hdr.ar_pln) << "\n";
+    logfile << "   |-Operation: " << ntohs(arpPacket->ea_hdr.ar_op) << "\n";
+
+    logfile << "   |-Sender MAC: ";
+    for (int i = 0; i < ETH_ALEN; ++i)
+        logfile << std::hex << static_cast<unsigned int>(arpPacket->arp_sha[i]) << ' ';
+
+    logfile << "\n   |-Sender IP: ";
+    for (int i = 0; i < 4; ++i)
+        logfile << static_cast<unsigned int>(arpPacket->arp_spa[i]) << ' ';
+
+    logfile << "\n   |-Target MAC: ";
+    for (int i = 0; i < ETH_ALEN; ++i)
+        logfile << std::hex << static_cast<unsigned int>(arpPacket->arp_tha[i]) << ' ';
+
+    logfile << "\n   |-Target IP: ";
+    for (int i = 0; i < 4; ++i)
+        logfile << static_cast<unsigned int>(arpPacket->arp_tpa[i]) << ' ';
+
+    logfile << "\n";
+
+    logfile << "ARP Header\n";
+    printData(Buffer.data() + sizeof(struct ether_arp), sizeof(struct ether_arp));
+
+    logfile << "Data Payload\n";
+    // Move the pointer ahead and reduce the size of the buffer
+    printData(Buffer.data() + sizeof(struct ether_arp), size - sizeof(struct ether_arp));
+
+    logfile << "\n###########################################################";
+}
+
+void PacketLogger::printData(const unsigned char* data, long Size)
 {
     int i, j;
     for (i = 0; i < Size; i++)
@@ -258,4 +359,20 @@ void PacketLogger::printData(const unsigned char* data, int Size)
             logfile << "\n";
         }
     }
+}
+
+PacketCounter::PacketCounter(){
+    ARP=0;
+    TCP=0;
+    UDP=0;
+    IGMP=0;
+    ICMP=0;
+};
+
+void PacketCounter::reset() {
+    ARP=0;
+    TCP=0;
+    UDP=0;
+    IGMP=0;
+    ICMP=0;
 }

@@ -5,11 +5,11 @@ set(CMAKE_CXX_STANDARD 17)
 
 set(SNIFFER_LIB_SOURCE sniffer.cpp)
 
-add_library(sniffer_library STATIC snifferlib.cpp filepacketlogger.cpp)
+add_library(sniffer_library SHARED src/snifferlib.cpp src/packetlogger.cpp)
 
-add_library(network_interface SHARED NetworkInterface.cpp)
+add_library(network_interface STATIC src/MainInterface.cpp)
 
-set(SOURCE main.cpp)
+set(SOURCE src/main.cpp)
 
 add_executable(SniferApp ${SOURCE})
 

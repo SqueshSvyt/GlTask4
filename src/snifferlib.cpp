@@ -1,7 +1,8 @@
-#include "snifferlib.h"
+#include "../include/snifferlib.h"
 
-PacketSniffer::PacketSniffer() : raw_socket(-1), buffer(buffer_size), pack_stat(), packetLogger() {
+PacketSniffer::PacketSniffer() : raw_socket(-1), buffer(buffer_size), pack_stat(), packet_Logger() {
     current_ip = default_ip;
+    stop_work = true;
 }
 
 PacketSniffer::~PacketSniffer(){
@@ -68,6 +69,7 @@ void PacketSniffer::updateAllSocketGet(ssize_t size){
 }
 
 void PacketSniffer::processPacket(ssize_t size){
+
     //Ip header for cheak ip
     auto* ip_header = reinterpret_cast<struct iphdr*>(const_cast<unsigned char*>(buffer.data()) + sizeof(struct ethhdr));
 
@@ -80,16 +82,16 @@ void PacketSniffer::processPacket(ssize_t size){
     updateAllSocketGet(size);
 
     //Log info about packet
-    packetLogger.LogPacketToFile(buffer);
+    packet_Logger.LogPacketAsync(buffer, size);
 }
 
 void PacketSniffer::outputOverallStatistics() const{
     while (true) {
         mtx_print.lock();
-
         unsigned long long speed_sen = pack_stat.sen_per_second.load();
         unsigned long long speed_rec  = pack_stat.rec_per_second.load();
-
+        std::cout << "-------------------Setting SniffInfo------------------------" << std::endl;
+        std::cout << "Current sniff ip: " << current_ip << std::endl;
         std::cout << "-------------------Statistics for IP------------------------" << std::endl;
         std::cout << "Total Packets: " << pack_stat.packet_count_PC << ", Total Size: " << formatBytes(pack_stat.total_size_PC) << " bytes" << std::endl;
         std::cout << "Total Sent Bytes: " << formatBytes(pack_stat.total_sen_data) << ", Total Received Bytes: " << formatBytes(pack_stat.total_rec_data) << std::endl;
@@ -98,13 +100,15 @@ void PacketSniffer::outputOverallStatistics() const{
 
         std::cout << "-------------------Overall Statistics-------------------" << std::endl;
         std::cout << "Total Packets: " << pack_stat.total_packet << ", Total Size: " << formatBytes(pack_stat.total_size) << " bytes" << std::endl;
+        std::cout << "ARP: " << packet_Logger.packet_counter.ARP << " TCP: " << packet_Logger.packet_counter.TCP << " UDP: " << packet_Logger.packet_counter.UDP
+                  << " ICMP: " << packet_Logger.packet_counter.ICMP  << " IGMP: " << packet_Logger.packet_counter.IGMP << std::endl;
         std::cout << "----------------------------------------------------------------" << std::endl;
         mtx_print.unlock();
 
         std::this_thread::sleep_for(std::chrono::milliseconds (1000));
 
         mtx_print.lock();
-        clearLine(8);
+        clearLine(11);
         mtx_print.unlock();
 
         if(!sniff_thread.joinable())
@@ -112,15 +116,41 @@ void PacketSniffer::outputOverallStatistics() const{
     }
 }
 
-void PacketSniffer::startSniffing(){
-    auto startTime = std::chrono::high_resolution_clock::now();
+void PacketSniffer::startSniffingDefault() {
     ssize_t data_size;
-    
-    int durationSeconds = 120;
-    
-    sockaddr saddr{};
+
+    while (true) {
+
+        if(raw_socket == -1){
+            perror("Socket error");
+            break;
+        }
+
+        // Receive a packet into the vector
+        mtx_rec.lock();
+        data_size = recvfrom(raw_socket, buffer.data() , 65536 , 0 , 0 , 0);
+        mtx_rec.unlock();
+
+        if (data_size < 0) {
+            perror("Recvfrom error");
+            break;
+        }
+
+        // Process the received packet
+        processPacket(data_size);
+
+        if(stop_work.load())
+            break;
+    }
+}
+
+void PacketSniffer::startSniffingByIP(){
+    ssize_t data_size;
+
+    sockaddr saddr;
     saddr.sa_family = inet_addr(current_ip.c_str());
     socklen_t saddr_size = sizeof(saddr);
+
     while (true) {
 
         if(raw_socket == -1){
@@ -141,25 +171,42 @@ void PacketSniffer::startSniffing(){
         // Process the received packet
         processPacket(data_size);
 
-        auto currentTime = std::chrono::high_resolution_clock::now();
-        auto elapsedSeconds = std::chrono::duration_cast<std::chrono::seconds>(currentTime - startTime).count();
-        if (elapsedSeconds >= durationSeconds) {
+        if(stop_work.load())
             break;
-        }    
     }
 }
 
-void PacketSniffer::start() {
-    if(current_ip.empty()){
+void PacketSniffer::start(int type) {
+    if(current_ip.empty())
         return;
+
+    stop();
+
+    stop_work = false;
+
+    switch (type) {
+        case SNIFF_DEFAULT:
+            sniff_thread = std::thread(&PacketSniffer::startSniffingDefault, this);
+            break;
+        case SNIFF_BY_IP:
+            sniff_thread = std::thread(&PacketSniffer::startSniffingByIP, this);
+            break;
+        default:
+            std::cout << std::endl
+                      << "Error start sniffing!" << std::endl;
+            stop_work = true;
+            return;
     }
 
-    sniff_thread = std::thread(&PacketSniffer::startSniffing, this);
     ui_thread = std::thread(&PacketSniffer::outputOverallStatistics, this);
     speed_reset_async = std::async(std::launch::async, &PacketSniffer::updateValue, this);
+
+
 }
 
 void PacketSniffer::stop() {
+    stop_work = true;
+
     if(sniff_thread.joinable())
         sniff_thread.join();
 
@@ -170,6 +217,7 @@ void PacketSniffer::stop() {
         speed_reset_async.wait();
 
     reset();
+    packet_Logger.packet_counter.reset();
 }
 
 std::string PacketSniffer::formatBytes(unsigned long long bytes) {
