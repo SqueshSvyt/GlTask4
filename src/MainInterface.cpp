@@ -17,6 +17,7 @@ std::string NetworkInterface::getIP() {
     while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
         if (strncmp(buffer, "127.0.0.1", strlen("127.0.0.1")) != 0 && strncmp(buffer, "::1", strlen("::1")) != 0) {
             result += buffer;
+            result[strcspn(result.c_str(), "\n")];
         }
     }
 
@@ -51,10 +52,10 @@ std::string NetworkInterface::getGatewayIp() {
 
 
 void NetworkInterface::printNetworkInfo() {
-    std::cout << "*******************************Network info*******************************" << std::endl;
-    std::cout << "Your Ip: " << getIP() << std::endl;
-    std::cout << "Your gatewayip: " << getGatewayIp() << std::endl;
-    std::cout << "Press Enter... ";
+    std::cout << "*********************************Network info********************************" << std::endl;
+    std::cout << "Your Ip: " << getIP();
+    std::cout << "Your gatewayip: " << getGatewayIp() << std::flush << std::endl;
+    std::cout << std::setw(77) << std::setfill('*') << "" << std::endl;
 }
 
 void printHeader() {
@@ -78,4 +79,20 @@ void printMenu() {
 void deleteLine(int n){
     for (int i = 0; i < n; ++i)
         std::cout << "\x1b[A\x1b[2K";
+}
+
+void disableInputBuffering() {
+    struct termios t;
+    tcgetattr(STDIN_FILENO, &t);
+    t.c_lflag &= ~ICANON;  // Turn off canonical mode
+    t.c_lflag &= ~ECHO;    // Turn off echoing
+    tcsetattr(STDIN_FILENO, TCSANOW, &t);
+}
+
+void restoreInputBuffering() {
+    struct termios t;
+    tcgetattr(STDIN_FILENO, &t);
+    t.c_lflag |= ICANON;  // Turn on canonical mode
+    t.c_lflag |= ECHO;    // Turn on echoing
+    tcsetattr(STDIN_FILENO, TCSANOW, &t);
 }

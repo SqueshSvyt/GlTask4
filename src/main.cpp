@@ -10,7 +10,7 @@ using namespace NetworkInterface;
 int main(){
     PacketSniffer sniffer;
 
-    const char* inputDevice = "/dev/input/by-path/platform-i8042-serio-0-event-kbd";  // Replace with the appropriate device file (eventX)
+    const char* inputDevice = "/dev/input/by-path/platform-i8042-serio-0-event-kbd";
     struct input_event ev;
     ssize_t n;
 
@@ -24,6 +24,7 @@ int main(){
     int option;
     printHeader();
     printMenu();
+    printNetworkInfo();
 
     if(!sniffer.createSocket()){
         std::cerr << "Cant open soket!" << std::endl;
@@ -31,6 +32,7 @@ int main(){
     }
 
     while(true){
+        disableInputBuffering();
         n = read(fd, &ev, sizeof(ev));
 
         if (n != sizeof(ev) || ev.type != EV_KEY && ev.value != 1)
@@ -45,11 +47,13 @@ int main(){
             }
             case Sniffer_IP: {
                 sniffer.stop();
-                std::string ipenter;
+                std::string ip_enter;
+                restoreInputBuffering();
+                std::cin.clear();
                 std::cout << "Enter ip: ";
-                std::cin >> ipenter;
+                std::cin >> ip_enter;
                 deleteLine(1);
-                sniffer.setCurrentIP(ipenter);
+                sniffer.setCurrentIP(ip_enter);
                 sniffer.start(Start_type::SNIFF_BY_IP);
                 break;
             }
@@ -60,15 +64,11 @@ int main(){
             case Stop_Sniff:
                 sniffer.stop();
                 break;
-            case Network_Info:
-                printNetworkInfo();
-                n = read(fd, &ev, sizeof(ev));
-                deleteLine(4);
-                break;
             case Exit_Sniff:
                 sniffer.stop();
-                std::cout << "Exit...";
+                std::cout << "Exit..." << std::endl;
                 return 0;
         }
+        std::cin.get();
     }
 }

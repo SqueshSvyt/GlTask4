@@ -9,6 +9,7 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <termios.h>
 #include <iomanip>
 
 #include <netdb.h>
@@ -34,5 +35,7 @@ namespace NetworkInterface {
 void printHeader();
 void printMenu();
 void deleteLine(int n);
+void restoreInputBuffering();
+void disableInputBuffering();
 
 #endif //SNIFERAPP_MAININTERFACE_H
