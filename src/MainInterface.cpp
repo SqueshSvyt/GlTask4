@@ -1,4 +1,3 @@
-#include <unistd.h>
 #include "../include/MainInterface.h"
 
 std::string NetworkInterface::getIP() {
@@ -17,7 +16,7 @@ std::string NetworkInterface::getIP() {
     while (fgets(buffer, sizeof(buffer), pipe) != NULL) {
         if (strncmp(buffer, "127.0.0.1", strlen("127.0.0.1")) != 0 && strncmp(buffer, "::1", strlen("::1")) != 0) {
             result += buffer;
-            result[strcspn(result.c_str(), "\n")];
+            result.erase(std::remove(result.begin(), result.end(), '\n'), result.cend());
         }
     }
 
@@ -53,7 +52,7 @@ std::string NetworkInterface::getGatewayIp() {
 
 void NetworkInterface::printNetworkInfo() {
     std::cout << "*********************************Network info********************************" << std::endl;
-    std::cout << "Your Ip: " << getIP();
+    std::cout << "Your Ip: " << getIP() << std::endl;
     std::cout << "Your gatewayip: " << getGatewayIp() << std::flush << std::endl;
     std::cout << std::setw(77) << std::setfill('*') << "" << std::endl;
 }
@@ -66,7 +65,7 @@ void printHeader() {
 
 void printMenu() {
     std::cout << std::setw(77) << std::setfill('*') << "" << std::endl;
-    std::cout << "Choose an option(Press key same as number in part of the menu15):" << std::endl;
+    std::cout << "Choose an option(Press key same as number in part of the menu (fn) f(number)):" << std::endl;
     std::cout << std::setfill(' ')  << "1. Start Default (Without connection to IP)"  << std::endl;
     std::cout << std::setfill(' ')  << "2. Start Sniffing on your current PC" << std::endl;
     std::cout << std::setfill(' ') << "3. Start Sniffing by IP" << std::endl;
@@ -95,4 +94,8 @@ void restoreInputBuffering() {
     t.c_lflag |= ICANON;  // Turn on canonical mode
     t.c_lflag |= ECHO;    // Turn on echoing
     tcsetattr(STDIN_FILENO, TCSANOW, &t);
+}
+
+int convertToOption(int n){
+    return n - 59;
 }

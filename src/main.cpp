@@ -1,5 +1,6 @@
 #include <iostream>
 #include <fcntl.h>
+#include <limits>
 #include <linux/input.h>
 
 #include "../include/snifferlib.h"
@@ -38,7 +39,7 @@ int main(){
         if (n != sizeof(ev) || ev.type != EV_KEY && ev.value != 1)
             continue;
 
-        option = ev.code - 2;
+        option = convertToOption(ev.code);
 
         switch (option) {
             case Sniffer_default:{
@@ -48,8 +49,8 @@ int main(){
             case Sniffer_IP: {
                 sniffer.stop();
                 std::string ip_enter;
-                restoreInputBuffering();
                 std::cin.clear();
+                std::cin.ignore(std::numeric_limits<std::streamsize>::max(), '\n');
                 std::cout << "Enter ip: ";
                 std::cin >> ip_enter;
                 deleteLine(1);

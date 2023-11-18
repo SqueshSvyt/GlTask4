@@ -9,6 +9,8 @@
 #include <cstring>
 #include <cstdio>
 #include <cstdlib>
+#include <unistd.h>
+#include <algorithm>
 #include <termios.h>
 #include <iomanip>
 
@@ -22,7 +24,6 @@ enum Menu_choose{
     Sniffer_PC,
     Sniffer_IP,
     Stop_Sniff,
-    Network_Info,
     Exit_Sniff
 };
 
@@ -32,6 +33,7 @@ namespace NetworkInterface {
     void printNetworkInfo();
 };
 
+int convertToOption(int n);
 void printHeader();
 void printMenu();
 void deleteLine(int n);
